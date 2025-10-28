@@ -1,0 +1,37 @@
+# Node
+node_modules/
+npm-debug.log*
+
+
+# Environment
+server/.env
+.env.local
+.env.*.local
+
+# Build / output
+dist/
+build/
+.tmp/
+tmp/
+.cache/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+
+# Logs / runtime files
+logs/
+*.log
+pids/
+*.pid
+*.seed
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Misc
+*.tgz
+
+package-lock.json
