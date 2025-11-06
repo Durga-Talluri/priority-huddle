@@ -361,6 +361,7 @@ const Note: React.FC<NoteProps> = ({
               </button>
               <span className="font-bold text-sm text-gray-900">{votes}</span>
               <button
+                disabled={votes > 0 ? false : true}
                 onClick={() => handleVote("DOWN")}
                 className="cursor-pointer p-1 rounded hover:bg-red-50 active:scale-95"
                 title="Downvote"

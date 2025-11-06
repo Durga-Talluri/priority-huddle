@@ -1,13 +1,7 @@
 import { gql } from "@apollo/client";
 import { NOTE_FIELDS } from "./queries";
 
-// --- ENUM DEFINITION (For VOTE_NOTE_MUTATION) ---
-const VOTE_TYPE_ENUM = gql`
-  enum VoteType {
-    UP
-    DOWN
-  }
-`;
+// NOTE: Enum types must be defined on the server schema. Do NOT include schema/type definitions in client operation documents.
 
 // --- AUTHENTICATION ---
 export const REGISTER_MUTATION = gql`
@@ -114,9 +108,7 @@ export const VOTE_NOTE_MUTATION = gql`
       upvotes
     }
   }
-  ${VOTE_TYPE_ENUM}
 `;
-
 export const DELETE_NOTE_MUTATION = gql`
   mutation DeleteNote($noteId: ID!) {
     deleteNote(noteId: $noteId)
