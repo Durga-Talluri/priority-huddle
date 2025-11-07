@@ -12,6 +12,8 @@ export interface INote extends Document {
   creatorId: Types.ObjectId; // Links to the User model
   boardId: Types.ObjectId; // Links to the Board model
   aiPriorityScore: number;
+  width: number;
+  height: number;
 }
 
 // 2. Define the Mongoose Schema
@@ -24,7 +26,9 @@ const NoteSchema: Schema = new Schema({
   creatorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   boardId: { type: Schema.Types.ObjectId, ref: 'Board', required: true },
   // Default score is neutral until AI processes it
-  aiPriorityScore: { type: Number, default: 0.5 }, 
+  aiPriorityScore: { type: Number, default: 0.5 },
+  width: { type: Number, default: 256 }, // Default width (w-64 = 256px)
+  height: { type: Number, default: 150 }, // Default height
 });
 
 export const Note = mongoose.model<INote>('Note', NoteSchema);

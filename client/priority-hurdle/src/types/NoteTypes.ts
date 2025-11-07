@@ -10,5 +10,9 @@ export interface NoteType {
   positionY: number; // Initial Y from DB
   upvotes: number;
   aiPriorityScore: number;
+  width?: number;
+  height?: number;
   onDelete: (noteId: string) => void;
+  focusedUsers?: Record<string, { username: string; userId: string }>;
+  currentUserId?: string;
 }

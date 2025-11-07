@@ -11,7 +11,10 @@ import {
 // removed unused imports
 import { GET_BOARD, GET_ME } from "../graphql/queries";
 import { DELETE_NOTE_MUTATION } from "../graphql/mutations";
-import { NOTE_UPDATED_SUBSCRIPTION } from "../graphql/subscriptions";
+import {
+  NOTE_UPDATED_SUBSCRIPTION,
+  NOTE_PRESENCE_SUBSCRIPTION,
+} from "../graphql/subscriptions";
 import CreateNoteForm from "../components/CreateNoteForm";
 import BoardToolbar from "../components/BoardToolbar";
 import DraggableNote from "../components/Note";
@@ -48,6 +51,8 @@ interface NotePayload {
   positionY?: number;
   upvotes?: number;
   aiPriorityScore?: number;
+  width?: number;
+  height?: number;
   creator?: { id: string; username?: string };
 }
 
@@ -62,8 +67,14 @@ const BoardPage: React.FC = () => {
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(
     null
   );
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
   const [newNotePosition, setNewNotePosition] = useState({ x: 50, y: 50 });
-
+  const [focusedUsers, setFocusedUsers] = useState<
+    Record<string, { username: string; userId: string }>
+  >({}); // Key: Note ID
+  const { data: presenceData } = useSubscription(NOTE_PRESENCE_SUBSCRIPTION, {
+    variables: { boardId },
+  });
   // =========================================================
   // 1. HOOK CALLS (MUST BE UNCONDITIONAL)
   // =========================================================
@@ -174,6 +185,8 @@ const BoardPage: React.FC = () => {
               positionY: payload.positionY ?? 50,
               upvotes: payload.upvotes ?? 0,
               aiPriorityScore: payload.aiPriorityScore ?? null,
+              width: payload.width ?? 256,
+              height: payload.height ?? 150,
               creator: payload.creator ?? { id: "", username: "" },
             };
 
@@ -212,6 +225,26 @@ const BoardPage: React.FC = () => {
       }
     }
   }, [subscriptionData, client, boardId]);
+  useEffect(() => {
+    if (presenceData?.notePresence) {
+      const { noteId, userId, username, status } = presenceData.notePresence;
+
+      setFocusedUsers((prev) => {
+        const newState = { ...prev };
+
+        if (status === "FOCUS") {
+          // Add or overwrite the user focusing on this note
+          newState[noteId] = { userId, username };
+        } else if (status === "BLUR") {
+          // Only remove if it's the same user who is blurring
+          if (newState[noteId]?.userId === userId) {
+            delete newState[noteId];
+          }
+        }
+        return newState;
+      });
+    }
+  }, [presenceData]);
   // =========================================================
   // 3. HANDLERS & HELPERS
   // =========================================================
@@ -288,6 +321,42 @@ const BoardPage: React.FC = () => {
       .finally(() => setPendingDeleteNoteId(null));
   };
 
+  const handleDeleteAllNotes = () => {
+    setIsDeleteAllModalOpen(true);
+  };
+
+  const cancelDeleteAll = () => setIsDeleteAllModalOpen(false);
+
+  const confirmDeleteAll = async () => {
+    if (!data?.board?.notes || data.board.notes.length === 0) return;
+    
+    try {
+      // Delete all notes sequentially
+      const deletePromises = data.board.notes.map((note: NoteType) =>
+        deleteNote({ variables: { noteId: note.id } })
+      );
+      await Promise.all(deletePromises);
+      
+      // Clear all notes from cache
+      client.cache.updateQuery<BoardData>(
+        { query: GET_BOARD, variables: { boardId } },
+        (existing) => {
+          if (!existing?.board) return existing;
+          return {
+            board: {
+              ...existing.board,
+              notes: [],
+            },
+          } as unknown as BoardData;
+        }
+      );
+      
+      setIsDeleteAllModalOpen(false);
+    } catch (error) {
+      console.error("Error deleting all notes:", error);
+    }
+  };
+
   // =========================================================
   // 4. CONDITIONAL RENDERING
   // =========================================================
@@ -324,12 +393,22 @@ const BoardPage: React.FC = () => {
 
         {/* Conditional Invite Button for the creator */}
         {isCreator && (
-          <button
-            onClick={() => setIsInviteModalOpen(true)}
-            className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition"
-          >
-            + Invite Collaborator
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleDeleteAllNotes}
+              disabled={!notes || notes.length === 0}
+              className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Delete all notes"
+            >
+              Delete All Notes
+            </button>
+            <button
+              onClick={() => setIsInviteModalOpen(true)}
+              className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition"
+            >
+              + Invite Collaborator
+            </button>
+          </div>
         )}
       </header>
 
@@ -341,7 +420,13 @@ const BoardPage: React.FC = () => {
       >
         {/* Render the Draggable Notes */}
         {notes.map((note) => (
-          <DraggableNote key={note.id} {...note} onDelete={handleDeleteNote} />
+          <DraggableNote 
+            key={note.id} 
+            {...note} 
+            onDelete={handleDeleteNote}
+            focusedUsers={focusedUsers}
+            currentUserId={currentUserId}
+          />
         ))}
 
         {/* Creation Form Modal/Panel */}
@@ -375,13 +460,13 @@ const BoardPage: React.FC = () => {
 
       {/* Confirmation modal for deleting a note */}
       {pendingDeleteNoteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center">
           <div
             className="absolute inset-0 bg-black/40"
             onClick={cancelPendingDelete}
             aria-hidden
           />
-          <div className="relative bg-white rounded-lg p-6 shadow-lg w-11/12 max-w-md">
+          <div className="relative bg-white rounded-lg p-6 shadow-lg w-11/12 max-w-md z-[10001]">
             <h3 className="text-lg font-semibold mb-2">Delete note?</h3>
             <p className="text-sm text-gray-600 mb-4">
               Are you sure you want to delete this note? This action cannot be
@@ -399,6 +484,38 @@ const BoardPage: React.FC = () => {
                 className="px-3 py-1 rounded-md bg-red-600 text-white"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation modal for deleting all notes */}
+      {isDeleteAllModalOpen && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={cancelDeleteAll}
+            aria-hidden
+          />
+          <div className="relative bg-white rounded-lg p-6 shadow-lg w-11/12 max-w-md z-[10001]">
+            <h3 className="text-lg font-semibold mb-2">Delete all notes?</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Are you sure you want to delete all {notes.length} note{notes.length !== 1 ? 's' : ''}? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={cancelDeleteAll}
+                className="px-3 py-1 rounded-md border border-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteAll}
+                disabled={isDeleting}
+                className="px-3 py-1 rounded-md bg-red-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? "Deleting..." : "Delete All"}
               </button>
             </div>
           </div>

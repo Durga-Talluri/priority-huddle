@@ -22,9 +22,21 @@ interface NoteUpdatePayload {
   noteUpdated: any; // Can be a Note object or a delete payload {id, _deleted}
   boardId: string;
 }
-export const pubsub = new PubSub<{ [key: string]: NoteUpdatePayload }>();
+interface PresencePayload {
+  notePresence: {
+    noteId: string;
+    userId: string;
+    username: string;
+    status: string;
+  };
+  boardId: string;
+}
 const NOTE_UPDATED = "NOTE_UPDATED";
-
+const NOTE_PRESENCE = "NOTE_PRESENCE";
+export const pubsub = new PubSub<{
+  NOTE_UPDATED: NoteUpdatePayload;
+  NOTE_PRESENCE: PresencePayload;
+}>();
 export const resolvers = {
   // Resolvers for the Query Type (Read Operations)
   Query: {
@@ -137,6 +149,20 @@ export const resolvers = {
       resolve: (payload: any) => {
         return payload.noteUpdated;
       },
+    },
+    notePresence: {
+      subscribe: withFilter(
+        () => pubsub.asyncIterableIterator([NOTE_PRESENCE]),
+        (
+          payload: PresencePayload | undefined,
+          variables: { boardId: string } | undefined
+        ) => {
+          // Filter by boardId to only send events to users on that board
+          if (!payload || !variables) return false;
+          return payload.boardId === variables.boardId;
+        }
+      ),
+      resolve: (payload: PresencePayload) => payload.notePresence,
     },
   },
   // New: Resolver for the Note Type's nested fields
@@ -279,8 +305,19 @@ export const resolvers = {
 
       // Check if the board exists and the user is authorized to add a note
       const board = await Board.findById(boardId);
-      if (!board || board.creator.toString() !== context.user._id.toString()) {
-        throw new Error("Board not found or you are not authorized.");
+      if (!board) {
+        throw new Error("Board not found.");
+      }
+
+      // Check if user is creator or collaborator
+      const isCreator =
+        board.creator.toString() === context.user._id.toString();
+      const isCollaborator = board.collaboratorIds
+        .map((id: any) => id.toString())
+        .includes(context.user._id.toString());
+
+      if (!isCreator && !isCollaborator) {
+        throw new Error("You are not authorized to add notes to this board.");
       }
 
       // 1. Create the new Note document
@@ -372,6 +409,36 @@ export const resolvers = {
 
       return updatedNote;
     },
+    updateNoteSize: async (
+      parent: any,
+      {
+        noteId,
+        width,
+        height,
+      }: { noteId: string; width: number; height: number },
+      context: Context
+    ) => {
+      if (!context.user) throw new Error("Authentication required.");
+
+      const note = await Note.findById(noteId);
+      if (!note) throw new Error("Note not found.");
+
+      // Validate minimum size
+      const minWidth = 150;
+      const minHeight = 100;
+      note.width = Math.max(minWidth, width);
+      note.height = Math.max(minHeight, height);
+
+      const updatedNote = await note.save();
+
+      // **REAL-TIME: PUBLISH THE UPDATE**
+      pubsub.publish(NOTE_UPDATED, {
+        noteUpdated: updatedNote,
+        boardId: updatedNote.boardId.toString(),
+      });
+
+      return updatedNote;
+    },
 
     // 3. Vote Note (Used for upvote/downvote buttons)
     voteNote: async (
@@ -417,9 +484,24 @@ export const resolvers = {
         throw new Error("Note not found.");
       }
       const boardId = noteToDelete.boardId.toString();
-      // 2. AUTHORIZATION CHECK: Only the creator can delete the note
-      if (noteToDelete.creatorId.toString() !== context.user._id.toString()) {
-        throw new Error("You are not authorized to delete this note.");
+
+      // 2. Find the board to check authorization
+      const board = await Board.findById(boardId);
+      if (!board) {
+        throw new Error("Board not found.");
+      }
+
+      // 3. AUTHORIZATION CHECK: Allow creator or collaborator to delete any note
+      const isCreator =
+        board.creator.toString() === context.user._id.toString();
+      const isCollaborator = board.collaboratorIds
+        .map((id: any) => id.toString())
+        .includes(context.user._id.toString());
+
+      if (!isCreator && !isCollaborator) {
+        throw new Error(
+          "You are not authorized to delete notes from this board."
+        );
       }
 
       // 3. IMPORTANT: Remove the Note ID reference from its Board
@@ -495,6 +577,31 @@ export const resolvers = {
         .populate("collaboratorIds");
 
       return updatedBoard;
+    },
+    broadcastPresence: async (
+      parent: any,
+      { noteId, status }: { noteId: string; status: string },
+      context: Context
+    ) => {
+      if (!context.user) throw new Error("Authentication required.");
+
+      // Get the boardId from the note (required for filtering)
+      const note = await Note.findById(noteId);
+      if (!note) return false;
+
+      const payload = {
+        noteId,
+        userId: context.user._id.toString(),
+        username: context.user.username,
+        status,
+      };
+
+      pubsub.publish(NOTE_PRESENCE, {
+        notePresence: payload,
+        boardId: note.boardId.toString(),
+      });
+
+      return true;
     },
   },
 };

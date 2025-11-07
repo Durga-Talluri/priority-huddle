@@ -21,6 +21,8 @@ const typeDefs = `#graphql
     upvotes: Int!
     creator: User! 
     aiPriorityScore: Float # From Phase 3
+    width: Float!
+    height: Float!
   }
 
   type Board {
@@ -30,7 +32,12 @@ const typeDefs = `#graphql
     creator: User!
     collaborators: [User!]
   }
-
+type PresencePayload {
+    noteId: ID!
+    userId: ID!
+    username: String!
+    status: String! # 'FOCUS' or 'BLUR'
+}
   # The main type for Authentication results
   type AuthPayload {
     token: String!
@@ -76,13 +83,16 @@ input LoginInput {
     # We'll add updateNote and moveNote later
     updateNote(noteId: ID!, content: String, color: String): Note
     updateNotePosition(noteId: ID!, positionX: Float!, positionY: Float!): Note
+    updateNoteSize(noteId: ID!, width: Float!, height: Float!): Note
     voteNote(noteId: ID!, type: VoteType!): Note
     addCollaborator(boardId: ID!, username: String!): Board
+    broadcastPresence(noteId: ID!, status: String!): Boolean!
   }
 
   # --- Subscription Type (Phase 2) ---
   type Subscription {
     noteUpdated(boardId: ID!): NoteUpdatePayload
+    notePresence(boardId: ID!): PresencePayload
   }
   # Assumed union/interface structure for subscription payload (based on previous discussion)
    union NoteUpdatePayload = Note | NoteDeletionPayload

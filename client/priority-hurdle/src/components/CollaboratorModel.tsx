@@ -40,8 +40,8 @@ const CollaboratorModal: React.FC<CollaboratorModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[10000]">
+      <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm z-[10001]">
         <h3 className="text-xl font-bold mb-4">Invite Collaborator</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

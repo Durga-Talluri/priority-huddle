@@ -92,6 +92,16 @@ export const UPDATE_NOTE_POSITION = gql`
   }
 `;
 
+export const UPDATE_NOTE_SIZE = gql`
+  mutation UpdateNoteSize($noteId: ID!, $width: Float!, $height: Float!) {
+    updateNoteSize(noteId: $noteId, width: $width, height: $height) {
+      id
+      width
+      height
+    }
+  }
+`;
+
 export const UPDATE_NOTE_MUTATION = gql`
   mutation UpdateNote($noteId: ID!, $content: String, $color: String) {
     updateNote(noteId: $noteId, content: $content, color: $color) {
@@ -112,5 +122,10 @@ export const VOTE_NOTE_MUTATION = gql`
 export const DELETE_NOTE_MUTATION = gql`
   mutation DeleteNote($noteId: ID!) {
     deleteNote(noteId: $noteId)
+  }
+`;
+export const BROADCAST_PRESENCE_MUTATION = gql`
+  mutation BroadcastPresence($noteId: ID!, $status: String!) {
+    broadcastPresence(noteId: $noteId, status: $status)
   }
 `;

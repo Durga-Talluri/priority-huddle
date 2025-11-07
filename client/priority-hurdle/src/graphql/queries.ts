@@ -13,6 +13,8 @@ export const NOTE_FIELDS = gql`
     positionY
     upvotes # Correct
     aiPriorityScore # Correct
+    width
+    height
     creator {
       id
       username
