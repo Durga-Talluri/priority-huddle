@@ -12,7 +12,9 @@ export const NOTE_FIELDS = gql`
     positionX
     positionY
     upvotes # Correct
-    aiPriorityScore # Correct
+    aiPriorityScore # Combined score (AI + votes)
+    aiContentScore # Score from LLM only
+    aiRationale # Short explanation from LLM
     width
     height
     creator {
@@ -44,6 +46,20 @@ export const GET_BOARD = gql`
     board(boardId: $boardId) {
       id
       title
+      objective
+      timeHorizon
+      category
+      aiWeight
+      enableAIScoring
+      enableVoting
+      allowDownvotes
+      requireOwnerApprovalForDelete
+      defaultNoteColor
+      snapToGrid
+      backgroundTheme
+      showLeaderboardByDefault
+      isArchived
+      createdAt
       creator { 
         id
         username
@@ -62,6 +78,17 @@ export const GET_ME = gql`
     me {
       id
       username
+    }
+  }
+`;
+
+// Query to search for users
+export const SEARCH_USERS = gql`
+  query SearchUsers($query: String!) {
+    searchUsers(query: $query) {
+      id
+      username
+      email
     }
   }
 `;

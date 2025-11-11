@@ -25,8 +25,9 @@ import {
 import Draggable from "react-draggable";
 import type { DraggableEvent, DraggableData } from "react-draggable";
 import { useMutation } from "@apollo/client/react";
-import type { NoteType as NoteProps } from "../types/NoteTypes";
+import type { NoteType as NoteProps, PresenceUser } from "../types/NoteTypes";
 import { debounce } from "../utils/debounce";
+import { getContrastColor } from "../utils/avatarGenerator";
 import { IoCloseSharp } from "react-icons/io5";
 const Note: React.FC<NoteProps> = ({
   id,
@@ -41,6 +42,9 @@ const Note: React.FC<NoteProps> = ({
   currentUserId,
   width: initialWidth = 256,
   height: initialHeight = 150,
+  aiPriorityScore,
+  aiContentScore,
+  aiRationale,
 }) => {
   const nodeRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<HTMLDivElement | null>(null);
@@ -71,9 +75,12 @@ const Note: React.FC<NoteProps> = ({
   const [broadcastPresence] = useMutation(BROADCAST_PRESENCE_MUTATION);
   const [updateSize] = useMutation(UPDATE_NOTE_SIZE);
 
-  const isFocusedByAnotherUser =
-    focusedUsers[id] && focusedUsers[id].userId !== currentUserId;
-  const focusedUser = focusedUsers[id];
+  // Get all users editing this note (excluding current user)
+  const editingUsers = (focusedUsers[id] || []).filter(
+    (u) => u.userId !== currentUserId
+  );
+  const isFocusedByAnotherUser = editingUsers.length > 0;
+  const primaryEditor = editingUsers[0]; // Use first editor for highlight color
 
   // Sync incoming props (from subscriptions) into local state
   useEffect(() => {
@@ -464,20 +471,41 @@ const Note: React.FC<NoteProps> = ({
       ? "10px 18px 36px rgba(0,0,0,0.34)"
       : isDragging || isResizing
       ? "8px 14px 30px rgba(0,0,0,0.3)"
+      : isFocusedByAnotherUser && primaryEditor
+      ? `0 0 0 2px ${primaryEditor.colorHex}40, 0 0 8px ${primaryEditor.colorHex}60, 2px 2px 8px rgba(0,0,0,0.12)`
       : "2px 2px 8px rgba(0,0,0,0.12)",
+    border: isFocusedByAnotherUser && primaryEditor
+      ? `1px dashed ${primaryEditor.colorHex}`
+      : undefined,
     cursor: isDragging ? "grabbing" : undefined,
     zIndex: zIndex,
     transition:
       isDragging || isResizing
         ? "box-shadow 120ms"
-        : "transform 200ms ease, box-shadow 200ms",
+        : "transform 200ms ease, box-shadow 200ms, border 200ms",
   };
+
+  // Calculate highlight style if being edited by another user
+  const highlightStyle = isFocusedByAnotherUser && primaryEditor
+    ? {
+        boxShadow: `0 0 0 2px ${primaryEditor.colorHex}40, 0 0 8px ${primaryEditor.colorHex}60`,
+        border: `1px dashed ${primaryEditor.colorHex}`,
+      }
+    : {};
 
   return (
     <div className="relative">
-      {isFocusedByAnotherUser && focusedUser && (
-        <div className="absolute top-[-10px] right-0 bg-yellow-500 text-xs text-black px-2 py-1 rounded-full shadow-md z-50">
-          {focusedUser.username} is editing...
+      {/* Editing indicator badge */}
+      {isFocusedByAnotherUser && primaryEditor && (
+        <div
+          className="absolute top-[-10px] right-0 text-xs px-2 py-1 rounded-full shadow-md z-50 flex items-center gap-1"
+          style={{
+            backgroundColor: primaryEditor.colorHex,
+            color: primaryEditor.textColor || getContrastColor(primaryEditor.colorHex),
+          }}
+        >
+          <span className="font-semibold">{primaryEditor.initials}</span>
+          <span>{primaryEditor.displayName} is editing...</span>
         </div>
       )}
       <Draggable
@@ -494,9 +522,34 @@ const Note: React.FC<NoteProps> = ({
         <div
           ref={nodeRef}
           data-note-id={id}
-          className={`note group absolute pt-8 pb-4 px-4 rounded-lg flex flex-col justify-between transition-all select-none`}
+          className={`note group absolute pt-8 pb-4 px-4 rounded-lg flex flex-col justify-between transition-all select-none relative`}
           style={noteStyle}
         >
+          {/* Hover tooltip for editing users */}
+          {isFocusedByAnotherUser && primaryEditor && (
+            <div
+              className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-3 py-2 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 whitespace-nowrap"
+              role="tooltip"
+              aria-label={`${primaryEditor.displayName} is editing this note`}
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold"
+                  style={{
+                    backgroundColor: primaryEditor.colorHex,
+                    color: primaryEditor.textColor || getContrastColor(primaryEditor.colorHex),
+                  }}
+                >
+                  {primaryEditor.initials}
+                </div>
+                <span>{primaryEditor.displayName} is editing this note</span>
+              </div>
+              {/* Tooltip arrow */}
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full">
+                <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black" />
+              </div>
+            </div>
+          )}
           {/* Grip / drag handle (hidden until hover or focus) */}
           <div
             ref={handleRef}
@@ -555,25 +608,25 @@ const Note: React.FC<NoteProps> = ({
               </button>
             </div>
 
-            {/* Creator and Delete */}
-            <div className="flex items-center space-x-2 text-xs">
-              <div className="flex items-center space-x-2">
-                <span className="font-semibold text-gray-800">
-                  {creator.username}
-                </span>
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(id);
-                }}
-                aria-label="Delete note"
-                title="Delete note"
-                className="absolute top-2 right-2 z-3"
-              >
-                <IoCloseSharp className="cursor-pointer size-5 text-red-600 hover:text-red-800 focus:outline-none focus:ring-2 focus:ring-red-300" />
-              </button>
+            {/* Creator */}
+            <div className="flex items-center space-x-2">
+              <span className="font-semibold text-gray-800 text-xs">
+                {creator.username}
+              </span>
             </div>
+
+            {/* Delete Button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(id);
+              }}
+              aria-label="Delete note"
+              title="Delete note"
+              className="absolute top-2 right-2 z-3"
+            >
+              <IoCloseSharp className="cursor-pointer size-5 text-red-600 hover:text-red-800 focus:outline-none focus:ring-2 focus:ring-red-300" />
+            </button>
           </div>
 
           {/* Resize handle - bottom right corner */}

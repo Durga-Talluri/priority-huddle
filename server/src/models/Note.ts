@@ -12,6 +12,8 @@ export interface INote extends Document {
   creatorId: Types.ObjectId; // Links to the User model
   boardId: Types.ObjectId; // Links to the Board model
   aiPriorityScore: number;
+  aiContentScore: number | null;
+  aiRationale: string | null;
   width: number;
   height: number;
 }
@@ -25,8 +27,10 @@ const NoteSchema: Schema = new Schema({
   upvotes: { type: Number, default: 0 },
   creatorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   boardId: { type: Schema.Types.ObjectId, ref: 'Board', required: true },
-  // Default score is neutral until AI processes it
+  // AI scoring fields
   aiPriorityScore: { type: Number, default: 0.5 },
+  aiContentScore: { type: Number, default: null },
+  aiRationale: { type: String, default: null },
   width: { type: Number, default: 256 }, // Default width (w-64 = 256px)
   height: { type: Number, default: 150 }, // Default height
 });

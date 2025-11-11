@@ -16,6 +16,8 @@ export const NOTE_UPDATED_SUBSCRIPTION = gql`
         positionY
         upvotes
         aiPriorityScore
+        aiContentScore
+        aiRationale
         width
         height
         creator {
@@ -39,6 +41,9 @@ export const NOTE_PRESENCE_SUBSCRIPTION = gql`
       userId
       username
       status
+      initials
+      colorHex
+      displayName
     }
   }
 `;

@@ -19,7 +19,12 @@ import CreateNoteForm from "../components/CreateNoteForm";
 import BoardToolbar from "../components/BoardToolbar";
 import DraggableNote from "../components/Note";
 import CollaboratorModal from "../components/CollaboratorModel";
-import type { NoteType } from "../types/NoteTypes";
+import PriorityLeaderboard from "../components/PriorityLeaderboard";
+import NoteDetailPanel from "../components/NoteDetailPanel";
+import BoardSettingsDrawer from "../components/BoardSettingsDrawer";
+import PresenceBar from "../components/PresenceBar";
+import type { NoteType, PresenceUser } from "../types/NoteTypes";
+import { getContrastColor } from "../utils/avatarGenerator";
 
 // --- Data Interfaces ---
 interface BoardData {
@@ -51,10 +56,13 @@ interface NotePayload {
   positionY?: number;
   upvotes?: number;
   aiPriorityScore?: number;
+  aiContentScore?: number;
+  aiRationale?: string;
   width?: number;
   height?: number;
   creator?: { id: string; username?: string };
 }
+
 
 const BoardPage: React.FC = () => {
   const { boardId } = useParams<{ boardId: string }>();
@@ -70,8 +78,12 @@ const BoardPage: React.FC = () => {
   const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
   const [newNotePosition, setNewNotePosition] = useState({ x: 50, y: 50 });
   const [focusedUsers, setFocusedUsers] = useState<
-    Record<string, { username: string; userId: string }>
-  >({}); // Key: Note ID
+    Record<string, PresenceUser[]>
+  >({}); // Key: Note ID, Value: Array of users editing
+  const [activeEditors, setActiveEditors] = useState<PresenceUser[]>([]); // All users currently editing any note
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { data: presenceData } = useSubscription(NOTE_PRESENCE_SUBSCRIPTION, {
     variables: { boardId },
   });
@@ -185,6 +197,8 @@ const BoardPage: React.FC = () => {
               positionY: payload.positionY ?? 50,
               upvotes: payload.upvotes ?? 0,
               aiPriorityScore: payload.aiPriorityScore ?? null,
+              aiContentScore: payload.aiContentScore ?? null,
+              aiRationale: payload.aiRationale ?? null,
               width: payload.width ?? 256,
               height: payload.height ?? 150,
               creator: payload.creator ?? { id: "", username: "" },
@@ -227,24 +241,86 @@ const BoardPage: React.FC = () => {
   }, [subscriptionData, client, boardId]);
   useEffect(() => {
     if (presenceData?.notePresence) {
-      const { noteId, userId, username, status } = presenceData.notePresence;
+      const {
+        noteId,
+        userId,
+        username,
+        status,
+        initials,
+        colorHex,
+        displayName,
+      } = presenceData.notePresence;
 
       setFocusedUsers((prev) => {
         const newState = { ...prev };
+        const color = colorHex || "#9CA3AF";
+        const userData: PresenceUser = {
+          userId,
+          username,
+          initials: initials || "?",
+          colorHex: color,
+          displayName: displayName || username,
+          textColor: getContrastColor(color),
+        };
 
         if (status === "FOCUS") {
-          // Add or overwrite the user focusing on this note
-          newState[noteId] = { userId, username };
+          // Add user to the note's editing list (avoid duplicates)
+          if (!newState[noteId]) {
+            newState[noteId] = [];
+          }
+          // Check if user already exists
+          const exists = newState[noteId].some((u) => u.userId === userId);
+          if (!exists) {
+            newState[noteId] = [...newState[noteId], userData];
+          }
         } else if (status === "BLUR") {
-          // Only remove if it's the same user who is blurring
-          if (newState[noteId]?.userId === userId) {
-            delete newState[noteId];
+          // Remove user from the note's editing list
+          if (newState[noteId]) {
+            newState[noteId] = newState[noteId].filter((u) => u.userId !== userId);
+            if (newState[noteId].length === 0) {
+              delete newState[noteId];
+            }
           }
         }
         return newState;
       });
+
+      // Update active editors list (all users editing any note)
+      setActiveEditors((prev) => {
+        if (status === "FOCUS") {
+          const exists = prev.some((u) => u.userId === userId);
+          if (!exists) {
+            const color = colorHex || "#9CA3AF";
+            return [
+              ...prev,
+              {
+                userId,
+                username,
+                initials: initials || "?",
+                colorHex: color,
+                displayName: displayName || username,
+                textColor: getContrastColor(color),
+              },
+            ];
+          }
+        } else if (status === "BLUR") {
+          return prev.filter((u) => u.userId !== userId);
+        }
+        return prev;
+      });
     }
   }, [presenceData]);
+
+  // Setup global function for opening note detail from tooltip
+  useEffect(() => {
+    (window as any).__openNoteDetail = (noteId: string) => {
+      setSelectedNoteId(noteId);
+    };
+    return () => {
+      delete (window as any).__openNoteDetail;
+    };
+  }, []);
+
   // =========================================================
   // 3. HANDLERS & HELPERS
   // =========================================================
@@ -387,69 +463,150 @@ const BoardPage: React.FC = () => {
   return (
     <div className="w-full h-screen  flex flex-col px-6 lg:px-10">
       <header className="flex justify-between items-center mb-4 mt-4">
-        <h1 className="text-3xl font-semibold text-slate-700 drop-shadow-sm">
-          {title}
-        </h1>
-
-        {/* Conditional Invite Button for the creator */}
-        {isCreator && (
-          <div className="flex gap-2">
-            <button
-              onClick={handleDeleteAllNotes}
-              disabled={!notes || notes.length === 0}
-              className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Delete all notes"
-            >
-              Delete All Notes
-            </button>
-            <button
-              onClick={() => setIsInviteModalOpen(true)}
-              className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition"
-            >
-              + Invite Collaborator
-            </button>
-          </div>
-        )}
-      </header>
-
-      {/* 4. Board Workspace Container */}
-      <div
-        id="board-canvas"
-        ref={boardRef}
-        className="flex-1 relative w-full h-full overflow-auto rounded-2xl  border border-gray-200  bg-[radial-gradient(circle,_rgba(0,0,0,0.05)_1px,_transparent_1px)] [background-size:20px_20px] bg-gray-50 p-6 shadow-inner"
-      >
-        {/* Render the Draggable Notes */}
-        {notes.map((note) => (
-          <DraggableNote 
-            key={note.id} 
-            {...note} 
-            onDelete={handleDeleteNote}
-            focusedUsers={focusedUsers}
+        <div className="flex items-center gap-4">
+          <h1 className="text-3xl font-semibold text-slate-700 drop-shadow-sm">
+            {title}
+          </h1>
+          {/* Presence Bar */}
+          <PresenceBar
+            activeEditors={activeEditors}
             currentUserId={currentUserId}
           />
-        ))}
+        </div>
 
-        {/* Creation Form Modal/Panel */}
-        {isCreatingNote && (
-          <div
-            className="absolute top-0 left-0"
-            style={{
-              transform: `translate(${newNotePosition.x}px, ${newNotePosition.y}px)`,
-            }}
+        {/* Header Actions */}
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition"
+            title="Board Settings"
+            aria-label="Open board settings"
           >
-            <CreateNoteForm
-              boardId={boardId}
-              initialPosition={newNotePosition}
-              onSuccess={() => setIsCreatingNote(false)}
-              onCancel={() => setIsCreatingNote(false)}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+          </button>
+          {isCreator && (
+            <>
+              <button
+                onClick={() => setShowLeaderboard(!showLeaderboard)}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition"
+                title="Toggle leaderboard"
+              >
+                {showLeaderboard ? "Hide" : "Show"} Leaderboard
+              </button>
+              <button
+                onClick={handleDeleteAllNotes}
+                disabled={!notes || notes.length === 0}
+                className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Delete all notes"
+              >
+                Delete All Notes
+              </button>
+              <button
+                onClick={() => setIsInviteModalOpen(true)}
+                className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition"
+              >
+                + Invite Collaborator
+              </button>
+            </>
+          )}
+          {!isCreator && (
+            <button
+              onClick={() => setShowLeaderboard(!showLeaderboard)}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition"
+              title="Toggle leaderboard"
+            >
+              {showLeaderboard ? "Hide" : "Show"} Leaderboard
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Leaderboard View */}
+      {showLeaderboard ? (
+        <div className="flex-1 overflow-auto p-6">
+          <PriorityLeaderboard
+            notes={notes}
+            onNoteClick={(noteId) => {
+              setSelectedNoteId(noteId);
+            }}
+            boardObjective="Reduce customer churn by improving onboarding conversion and decreasing time-to-value for new customers."
+          />
+        </div>
+      ) : (
+        /* 4. Board Workspace Container */
+        <div
+          id="board-canvas"
+          ref={boardRef}
+          className="flex-1 relative w-full h-full overflow-auto rounded-2xl  border border-gray-200  bg-[radial-gradient(circle,_rgba(0,0,0,0.05)_1px,_transparent_1px)] [background-size:20px_20px] bg-gray-50 p-6 shadow-inner"
+        >
+          {/* Render the Draggable Notes */}
+          {notes.map((note) => (
+            <DraggableNote 
+              key={note.id} 
+              {...note} 
+              onDelete={handleDeleteNote}
+              focusedUsers={focusedUsers}
+              currentUserId={currentUserId}
             />
-          </div>
-        )}
-      </div>
+          ))}
+
+          {/* Creation Form Modal/Panel */}
+          {isCreatingNote && (
+            <div
+              className="absolute top-0 left-0"
+              style={{
+                transform: `translate(${newNotePosition.x}px, ${newNotePosition.y}px)`,
+              }}
+            >
+              <CreateNoteForm
+                boardId={boardId}
+                initialPosition={newNotePosition}
+                onSuccess={() => setIsCreatingNote(false)}
+                onCancel={() => setIsCreatingNote(false)}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Toolbar and Modals */}
 
       <BoardToolbar onAddNewNote={startNewNoteCreation} boardId={boardId} />
+
+      {/* Note Detail Panel */}
+      <NoteDetailPanel
+        note={selectedNoteId ? notes.find((n) => n.id === selectedNoteId) || null : null}
+        onClose={() => setSelectedNoteId(null)}
+      />
+
+      {/* Board Settings Drawer */}
+      <BoardSettingsDrawer
+        boardId={boardId || ""}
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        currentUserId={currentUserId}
+        isOwner={isCreator}
+      />
+
 
       {isInviteModalOpen && (
         <CollaboratorModal

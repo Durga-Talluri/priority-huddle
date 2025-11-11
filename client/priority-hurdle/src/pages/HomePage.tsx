@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import { GET_ME, GET_MY_BOARDS } from "../graphql/queries";
 import { useNavigate } from "react-router-dom";
-import CreateBoardForm from "../components/CreateBoardForm";
+import BoardCreationWizard from "../components/BoardCreationWizard";
 
 // Define the required data types for clarity
 interface UserData {
@@ -143,10 +143,10 @@ const HomePage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Modal Overlay and Form */}
+      {/* 2. Modal Overlay and Wizard */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
-          <CreateBoardForm onClose={() => setIsModalOpen(false)} />
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <BoardCreationWizard onClose={() => setIsModalOpen(false)} />
         </div>
       )}
     </div>

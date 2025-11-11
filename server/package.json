@@ -14,6 +14,7 @@
   "dependencies": {
     "@apollo/server": "^5.0.0",
     "@as-integrations/express5": "^1.1.2",
+    "@google/generative-ai": "^0.24.1",
     "@graphql-tools/schema": "^10.0.26",
     "@types/cors": "^2.8.19",
     "bcrypt": "^6.0.0",

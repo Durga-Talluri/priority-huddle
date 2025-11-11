@@ -32,10 +32,18 @@ export const LOGIN_MUTATION = gql`
 
 // --- BOARD MUTATIONS ---
 export const CREATE_BOARD_MUTATION = gql`
-  mutation CreateBoard($title: String!) {
-    createBoard(title: $title) {
+  mutation CreateBoard($input: CreateBoardInput!) {
+    createBoard(input: $input) {
       id
       title
+      objective
+      timeHorizon
+      category
+      aiWeight
+      enableAIScoring
+      enableVoting
+      allowDownvotes
+      requireOwnerApprovalForDelete
       # Correctly selecting subfields for the complex User type
       creator {
         id
@@ -127,5 +135,41 @@ export const DELETE_NOTE_MUTATION = gql`
 export const BROADCAST_PRESENCE_MUTATION = gql`
   mutation BroadcastPresence($noteId: ID!, $status: String!) {
     broadcastPresence(noteId: $noteId, status: $status)
+  }
+`;
+
+export const UPDATE_BOARD_SETTINGS_MUTATION = gql`
+  mutation UpdateBoardSettings($boardId: ID!, $input: UpdateBoardSettingsInput!) {
+    updateBoardSettings(boardId: $boardId, input: $input) {
+      id
+      title
+      objective
+      timeHorizon
+      category
+      aiWeight
+      enableAIScoring
+      enableVoting
+      allowDownvotes
+      requireOwnerApprovalForDelete
+      defaultNoteColor
+      snapToGrid
+      backgroundTheme
+      showLeaderboardByDefault
+    }
+  }
+`;
+
+export const ARCHIVE_BOARD_MUTATION = gql`
+  mutation ArchiveBoard($boardId: ID!) {
+    archiveBoard(boardId: $boardId) {
+      id
+      isArchived
+    }
+  }
+`;
+
+export const DELETE_BOARD_MUTATION = gql`
+  mutation DeleteBoard($boardId: ID!) {
+    deleteBoard(boardId: $boardId)
   }
 `;

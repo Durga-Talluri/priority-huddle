@@ -20,7 +20,9 @@ const typeDefs = `#graphql
     color: String!
     upvotes: Int!
     creator: User! 
-    aiPriorityScore: Float # From Phase 3
+    aiPriorityScore: Float # Combined score (AI + votes)
+    aiContentScore: Float # Score from LLM only
+    aiRationale: String # Short explanation from LLM
     width: Float!
     height: Float!
   }
@@ -28,15 +30,32 @@ const typeDefs = `#graphql
   type Board {
     id: ID!
     title: String!
+    objective: String
+    timeHorizon: String
+    category: String
     notes: [Note!]!
     creator: User!
     collaborators: [User!]
+    aiWeight: Float
+    enableAIScoring: Boolean
+    enableVoting: Boolean
+    allowDownvotes: Boolean
+    requireOwnerApprovalForDelete: Boolean
+    defaultNoteColor: String
+    snapToGrid: Boolean
+    backgroundTheme: String
+    showLeaderboardByDefault: Boolean
+    isArchived: Boolean
+    createdAt: String
   }
 type PresencePayload {
     noteId: ID!
     userId: ID!
     username: String!
     status: String! # 'FOCUS' or 'BLUR'
+    initials: String # Avatar initials
+    colorHex: String # Avatar color
+    displayName: String # Display name for tooltips
 }
   # The main type for Authentication results
   type AuthPayload {
@@ -52,10 +71,40 @@ type PresencePayload {
     password: String!
 }
   
-input LoginInput {
+  input LoginInput {
     email: String!
     password: String!
 }
+
+  input CreateBoardInput {
+    title: String!
+    objective: String!
+    timeHorizon: String
+    category: String
+    collaboratorUsernames: [String!]
+    aiWeight: Float
+    enableAIScoring: Boolean
+    enableVoting: Boolean
+    allowDownvotes: Boolean
+    requireOwnerApprovalForDelete: Boolean
+  }
+
+  input UpdateBoardSettingsInput {
+    title: String
+    objective: String
+    timeHorizon: String
+    category: String
+    aiWeight: Float
+    enableAIScoring: Boolean
+    enableVoting: Boolean
+    allowDownvotes: Boolean
+    requireOwnerApprovalForDelete: Boolean
+    defaultNoteColor: String
+    snapToGrid: Boolean
+    backgroundTheme: String
+    showLeaderboardByDefault: Boolean
+  }
+  
    enum VoteType {
     UP
     DOWN
@@ -67,6 +116,7 @@ input LoginInput {
     me: User # Get the currently logged-in user
     board(boardId: ID!): Board
     myBoards: [Board!]!
+    searchUsers(query: String!): [User!]! # Search users by username or email
     
     # We'll add more queries later
   }
@@ -77,7 +127,7 @@ input LoginInput {
     login(input: LoginInput!): AuthPayload!
 
     # Phase 1 Core Mutations
-    createBoard(title: String!): Board!
+    createBoard(input: CreateBoardInput!): Board!
     createNote(boardId: ID!, content: String!, color: String!, positionX: Float!, positionY: Float!): Note!
     deleteNote(noteId: ID!): ID!
     # We'll add updateNote and moveNote later
@@ -86,6 +136,9 @@ input LoginInput {
     updateNoteSize(noteId: ID!, width: Float!, height: Float!): Note
     voteNote(noteId: ID!, type: VoteType!): Note
     addCollaborator(boardId: ID!, username: String!): Board
+    updateBoardSettings(boardId: ID!, input: UpdateBoardSettingsInput!): Board!
+    archiveBoard(boardId: ID!): Board!
+    deleteBoard(boardId: ID!): Boolean!
     broadcastPresence(noteId: ID!, status: String!): Boolean!
   }
 
